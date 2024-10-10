@@ -146,15 +146,17 @@ def pyspark_job(**context):
 
     # Преобразовываем DataFrame в csv:
     flights_pak_df.write.csv('opt/airflow/xcom/flights_pak_df.csv', mode='overwrite', header=True)
+    airports_df.write.csv('opt/airflow/xcom/airports_df.csv', mode='overwrite', header=True)
 
     # Добавляем данные в XCom для передачи их в task conn_and_load_clickhouse
     context['ti'].xcom_push(key='flights_pak_csv', value='opt/airflow/xcom/flights_pak_df.csv')
-
+    context['ti'].xcom_push(key='airports_df_csv', value='opt/airflow/xcom/airports_df.csv')
     spark.stop()
 
 def conn_and_load_postgresql(**context):
     # Забираем данные из XCom
     flights_pak_csv = context['ti'].xcom_pull(key='flights_pak_csv')
+    airports_csv = context['ti'].xcom_pull(key='airports_df_csv')
 
     # Создаем спарк сессию с драйвером postgresql-42.7.3.jar
     spark = SparkSession.builder \
@@ -164,6 +166,7 @@ def conn_and_load_postgresql(**context):
 
     # Получаем pyspark dataframe из csv файла
     flights_pak_df = spark.read.csv(flights_pak_csv, header=True, inferSchema=True)
+    airports_df = spark.read.csv(airports_csv, header=True, inferSchema=True)
 
     # Загружаем 10000 строк flights_pak_df в postgresql
     try:
@@ -198,8 +201,10 @@ def conn_and_load_postgresql(**context):
           FROM time_flights tf
             INNER JOIN airports a ON tf.ORIGIN_AIRPORT == a.`IATA CODE`
         """
-    ).show(truncate=False)
+    )
 
+    print("Общее время налета самолетов по аэропортам: ")
+    time_flights.show(truncate=False)
 
 task_extract_data = PythonOperator(
     task_id='extract_data',
