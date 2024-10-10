@@ -144,8 +144,8 @@ def pyspark_job(**context):
     flights_pak_df.show()
 
 
-    # Выбираем первые 10000 строк и преобразовываем DataFrame в csv:
-    flights_pak_df.limit(10000).write.csv('opt/airflow/xcom/flights_pak_df.csv', mode='overwrite', header=True)
+    # Преобразовываем DataFrame в csv:
+    flights_pak_df.write.csv('opt/airflow/xcom/flights_pak_df.csv', mode='overwrite', header=True)
 
     # Добавляем данные в XCom для передачи их в task conn_and_load_clickhouse
     context['ti'].xcom_push(key='flights_pak_csv', value='opt/airflow/xcom/flights_pak_df.csv')
@@ -165,10 +165,10 @@ def conn_and_load_postgresql(**context):
     # Получаем pyspark dataframe из csv файла
     flights_pak_df = spark.read.csv(flights_pak_csv, header=True, inferSchema=True)
 
-    # Загружаем в postgresql
+    # Загружаем 10000 строк flights_pak_df в postgresql
     try:
 
-        flights_pak_df.write.mode("overwrite") \
+        flights_pak_df.limit(10000).write.mode("overwrite") \
             .format("jdbc") \
             .option("url", "jdbc:postgresql://host.docker.internal:5432/test") \
             .option("dbtable", "flights_pak") \
@@ -179,7 +179,27 @@ def conn_and_load_postgresql(**context):
     except Exception as e:
         print(f"Error connecting to PostgreSQL: {e}")
     print("Данные загружены")
-    spark.stop()
+
+    # Общее время полетов для компаний:
+
+    # Регистрируем временную таблицу:
+    flights_pak_df.createOrReplaceTempView("flights_pak")
+    airports_df.createOrReplaceTempView("airports")
+
+    spark.sql("""
+          SELECT ORIGIN_AIRPORT, SUM(ABS(ARRIVAL_HOUR - DEPARTURE_HOUR)) as TIME_FLIGHTS
+          FROM flights_pak 
+          GROUP BY ORIGIN_AIRPORT
+        """).createOrReplaceTempView("time_flights")
+
+    time_flights = spark.sql(
+        """
+          SELECT `a`.`Airport`, `tf`.`TIME_FLIGHTS`
+          FROM time_flights tf
+            INNER JOIN airports a ON tf.ORIGIN_AIRPORT == a.`IATA CODE`
+        """
+    ).show(truncate=False)
+
 
 task_extract_data = PythonOperator(
     task_id='extract_data',
