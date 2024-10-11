@@ -190,10 +190,17 @@ def conn_and_load_postgresql(**context):
     airports_df.createOrReplaceTempView("airports")
 
     spark.sql("""
-          SELECT ORIGIN_AIRPORT, SUM(ABS(ARRIVAL_HOUR - DEPARTURE_HOUR)) as TIME_FLIGHTS
-          FROM flights_pak 
-          GROUP BY ORIGIN_AIRPORT
-        """).createOrReplaceTempView("time_flights")
+              WITH t1 AS (
+    	            SELECT ORIGIN_AIRPORT, 
+     	                CASE 
+     		                WHEN ARRIVAL_HOUR >= DEPARTURE_HOUR THEN ARRIVAL_HOUR - DEPARTURE_HOUR
+     		                ELSE ARRIVAL_HOUR - DEPARTURE_HOUR + 24.0
+     	                END AS TIME_FLIGHTS
+     	            FROM flights_pak)
+              SELECT ORIGIN_AIRPORT, sum(TIME_FLIGHTS) AS TIME_FLIGHTS
+              FROM t1
+              GROUP BY ORIGIN_AIRPORT
+            """).createOrReplaceTempView("time_flights")
 
     time_flights = spark.sql(
         """
