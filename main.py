@@ -204,9 +204,10 @@ def conn_and_load_postgresql(**context):
 
     time_flights = spark.sql(
         """
-          SELECT `a`.`Airport`, `tf`.`TIME_FLIGHTS`
-          FROM time_flights tf
+        SELECT Airport, TIME_FLIGHTS
+        FROM time_flights tf
             INNER JOIN airports a ON tf.ORIGIN_AIRPORT == a.`IATA CODE`
+        ORDER BY TIME_FLIGHTS DESC   
         """
     )
 
